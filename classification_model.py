@@ -4,6 +4,11 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dropout, Flatten, Dens
 from tensorflow.keras import layers, models, Input
 from tensorflow.keras.utils import image_dataset_from_directory
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+from tensorflow.keras.layers import BatchNormalization
+
 import matplotlib.pyplot as plt
 import os
 
@@ -12,58 +17,73 @@ data_dir = "C:/Python/kiwi/datasets"
 train_dir = "C:/Python/kiwi/datasets/train"
 valid_dir = "C:/Python/kiwi/datasets/valid"
 
-train_dataset = tf.keras.utils.image_dataset_from_directory(
+train_datagen = ImageDataGenerator(
+    rescale=1. / 255,          # Normalize images to [0, 1]
+    rotation_range=20,         # Randomly rotate images
+    width_shift_range=0.2,     # Randomly shift images horizontally
+    height_shift_range=0.2,    # Randomly shift images vertically
+    shear_range=0.2,           # Randomly shear images
+    zoom_range=0.2,            # Randomly zoom into images
+    horizontal_flip=True,      # Randomly flip images horizontally
+    fill_mode='nearest'        # How to fill in newly created pixels
+)
+
+val_datagen = ImageDataGenerator(rescale=1. / 255)  # Only rescale for validation
+
+# New code using ImageDataGenerator
+train_dataset = train_datagen.flow_from_directory(
     train_dir,
-    seed=123, 
-    image_size=(75, 75),
-    batch_size=64
+    target_size=(75, 75),
+    batch_size=64,
+    class_mode='sparse',  # for sparse categorical labels
+    seed=123
 )
 
-val_dataset = tf.keras.utils.image_dataset_from_directory(
+val_dataset = val_datagen.flow_from_directory(
     valid_dir,
-    seed=123,
-    image_size=(75, 75),
-    batch_size=64
+    target_size=(75, 75),
+    batch_size=64,
+    class_mode='sparse',  # for sparse categorical labels
+    seed=123
 )
 
 
-normalization_layer = layers.Rescaling(1. / 255)
-train_dataset = train_dataset.map(lambda x, y: (normalization_layer(x), y))
-val_dataset = val_dataset.map(lambda x, y: (normalization_layer(x), y))
+#normalization_layer = layers.Rescaling(1. / 255)
+#train_dataset = train_dataset.map(lambda x, y: (normalization_layer(x), y))
+#val_dataset = val_dataset.map(lambda x, y: (normalization_layer(x), y))
 
 
-train_dataset = train_dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
-val_dataset = val_dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
-
+learning_rate = 0.0005  # You can adjust this value as needed
+optimizer = Adam(learning_rate=learning_rate)
 
 model = Sequential()
-
-
-model.add(Conv2D(filters=128, kernel_size=3, strides=(1, 1), padding='same', activation='relu', input_shape=(75, 75, 3)))
-model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
 model.add(Conv2D(filters=256, kernel_size=3, strides=(1, 1), padding='same', activation='relu', input_shape=(75, 75, 3)))
+model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
+model.add(Conv2D(filters=512, kernel_size=3, strides=(1, 1), padding='same', activation='relu', input_shape=(75, 75, 3)))
+model.add(BatchNormalization())
 model.add(MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
 model.add(Dropout(0.25))
 model.add(Flatten())
 model.add(Dense(units=128, activation='relu'))
 model.add(Dropout(0.5))
-model.add(Dense(units=3, activation='softmax'))
-model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.add(Dense(units=3, activation='softmax'))  
+model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
 model.summary()
 
 early_stopping = EarlyStopping(
-    monitor='val_loss',
-    patience=5,
-    restore_best_weights=True
+    monitor='val_loss',   
+    patience=5,          
+    restore_best_weights=True  
 )
 
 history = model.fit(
     train_dataset,
     validation_data=val_dataset,
-    epochs=30,
-    steps_per_epoch=30,
-    callbacks=[early_stopping]
+    epochs=35,
+    steps_per_epoch=40,
+    callbacks=[early_stopping]  
 )
 
 
@@ -97,16 +117,17 @@ plt.show()
 test_dir = "C:/Python/kiwi/datasets/test"
 
 
-test_dataset = tf.keras.utils.image_dataset_from_directory(
+test_dataset = val_datagen.flow_from_directory(
     test_dir,
-    seed=123,
-    image_size=(75, 75),
-    batch_size=64
+    target_size=(75, 75),
+    batch_size=25,
+    class_mode='sparse',  # for sparse categorical labels
+    seed=123
 )
 
 
-test_dataset = test_dataset.map(lambda x, y: (normalization_layer(x), y))
-test_dataset = test_dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
+#test_dataset = test_dataset.map(lambda x, y: (normalization_layer(x), y))
+#test_dataset = test_dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
 
 test_loss, test_acc = model.evaluate(test_dataset, verbose=2)
 print("Test Accuracy:", test_acc)
